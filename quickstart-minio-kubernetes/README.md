@@ -7,7 +7,7 @@
   - Create loop devices
   - Deploy kubernetes using kubeadm
   - Quickstart minio
-- Use the API
+- Use the API and run s3bench
 
 ## Automated setup using ansible
 
@@ -322,11 +322,19 @@ kubectl apply -f minio-dev.yaml
 kubectl port-forward pod/minio -n minio-dev 9000 9090
 ```
 
-- Open other terminal
+- Open other terminal to run s3bench
 
 ```
 # You can run s3bench in this terminal
 # The api endpoint is 127.0.0.1:9000
 # Access key is 'minioadmin'
 # Access secret is 'minioadmin'
+
+# s3bench example
+wget https://github.com/Seagate/s3bench/releases/download/v2022-03-14/s3bench.2022-03-14 -O s3bench
+chmod +x s3bench
+
+./s3bench -accessKey=minioadmin -accessSecret=minioadmin -bucket=loadgen \
+  -endpoint=http://127.0.0.1:9000 \
+  -numClients=2 -numSamples=10 -objectNamePrefix=loadgen -objectSize=1024Mb
 ```
