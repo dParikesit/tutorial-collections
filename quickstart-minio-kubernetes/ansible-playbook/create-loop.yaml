@@ -1,0 +1,46 @@
+- name: Create loop devices
+  hosts: ccloud
+  remote_user: "{{username}}"
+  become: yes
+
+  tasks:    
+    - name: Create file
+      shell: |
+        mkdir -p /mnt/extra/loop-files/
+        cd /mnt/extra/loop-files/
+        dd if=/dev/zero of=loopbackfile1.img bs=100M count=250
+        dd if=/dev/zero of=loopbackfile2.img bs=100M count=250
+        dd if=/dev/zero of=loopbackfile3.img bs=100M count=250
+        dd if=/dev/zero of=loopbackfile4.img bs=100M count=250
+        dd if=/dev/zero of=loopbackfile5.img bs=100M count=250
+    
+    - name: Create loop device
+      shell: |
+        cd /mnt/extra/loop-files/
+        sudo losetup -fP loopbackfile1.img
+        sudo losetup -fP loopbackfile2.img
+        sudo losetup -fP loopbackfile3.img
+        sudo losetup -fP loopbackfile4.img
+        sudo losetup -fP loopbackfile5.img
+    
+    - name: Format devices into ext4
+      shell: |
+        printf "y" | sudo mkfs.ext4 /mnt/extra/loop-files/loopbackfile1.img 
+        printf "y" | sudo mkfs.ext4 /mnt/extra/loop-files/loopbackfile2.img 
+        printf "y" | sudo mkfs.ext4 /mnt/extra/loop-files/loopbackfile3.img 
+        printf "y" | sudo mkfs.ext4 /mnt/extra/loop-files/loopbackfile4.img 
+        printf "y" | sudo mkfs.ext4 /mnt/extra/loop-files/loopbackfile5.img 
+
+    - name: Mount loop devices
+      shell: |
+        mkdir -p /mnt/extra/loop-devs/loop0
+        mkdir -p /mnt/extra/loop-devs/loop1
+        mkdir -p /mnt/extra/loop-devs/loop2
+        mkdir -p /mnt/extra/loop-devs/loop3
+        mkdir -p /mnt/extra/loop-devs/loop4
+        cd /mnt/extra/loop-devs/
+        sudo mount -o loop /dev/loop0 /mnt/extra/loop-devs/loop0
+        sudo mount -o loop /dev/loop1 /mnt/extra/loop-devs/loop1
+        sudo mount -o loop /dev/loop2 /mnt/extra/loop-devs/loop2
+        sudo mount -o loop /dev/loop3 /mnt/extra/loop-devs/loop3
+        sudo mount -o loop /dev/loop4 /mnt/extra/loop-devs/loop4

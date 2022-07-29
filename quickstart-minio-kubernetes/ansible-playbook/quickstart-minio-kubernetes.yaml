@@ -1,0 +1,13 @@
+- name: Quickstart MinIO kubernetes
+  hosts: ccloud
+  remote_user: "{{username}}"
+
+  tasks:
+    - name: Download MinIO object
+      copy:
+        src: ../minio-dev.yaml
+        dest: /home/{{username}}
+        owner: "{{username}}"
+
+    - name: Apply MinIO object
+      shell: "kubectl apply -f minio-dev.yaml"

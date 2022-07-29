@@ -1,0 +1,4 @@
+ccloud:
+  hosts:
+    skylake:
+      ansible_host: 192.5.86.200

@@ -1,0 +1,132 @@
+- name: Install CRI-O
+  hosts: ccloud
+  remote_user: "{{username}}"
+  become: yes
+  vars:
+    OS: CentOS_7
+    VERSION: 1.24
+
+  tasks:
+    - name: Update package manager
+      command: /bin/true
+      notify: "Update package manager"
+
+    - meta: flush_handlers
+
+    - name: Install CRI-O
+      shell: |
+        sudo curl -L -o /etc/yum.repos.d/devel:kubic:libcontainers:stable.repo https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/{{OS}}/devel:kubic:libcontainers:stable.repo
+        sudo curl -L -o /etc/yum.repos.d/devel:kubic:libcontainers:stable:cri-o:{{VERSION}}.repo https://download.opensuse.org/repositories/devel:kubic:libcontainers:stable:cri-o:{{VERSION}}/{{OS}}/devel:kubic:libcontainers:stable:cri-o:{{VERSION}}.repo
+        sudo yum install cri-o -y 
+
+  handlers:    
+    - name: Update yum
+      yum:
+        update_cache: yes
+      when: ansible_distribution == 'CentOS' or ansible_distribution == 'Red Hat Enterprise Linux'
+      listen: "Update package manager"
+    
+- name: Install Kubernetes
+  hosts: ccloud
+  gather_facts: no
+  remote_user: "{{username}}"
+  become: yes
+
+  tasks:    
+    - name: Disable swap
+      shell: |
+        swapoff -a
+        sudo sed -i '/swap/d' /etc/fstab
+    
+    - name: Configure iptables
+      shell: |
+        cat <<EOF | sudo tee /etc/ufw/sysctl.conf
+        net/bridge/bridge-nf-call-ip6tables = 1
+        net/bridge/bridge-nf-call-iptables = 1
+        net/bridge/bridge-nf-call-arptables = 1
+        net/ipv4/ip_forward = 1
+        EOF
+
+    - name: Modify sysctl
+      shell: |
+        sudo modprobe bridge
+        sudo modprobe br_netfilter
+        sudo sysctl -w net.ipv4.ip_forward=1 >> /etc/sysctl.conf
+        sudo sysctl -w net.bridge.bridge-nf-call-iptables=1 >> /etc/sysctl.conf
+        sudo sysctl -w net.bridge.bridge-nf-call-ip6tables=1 >> /etc/sysctl.conf
+        sudo sysctl -w net.bridge.bridge-nf-call-arptables=1 >> /etc/sysctl.conf
+    
+    - name: Reload ufw and sysctl config
+      shell: |
+        sudo ufw reload
+        sudo sysctl --system
+    
+    - name: Add kubernetes repo
+      shell: |
+        cat <<EOF | sudo tee /etc/yum.repos.d/kubernetes.repo
+        [kubernetes]
+        name=Kubernetes
+        baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-\$basearch
+        enabled=1
+        gpgcheck=1
+        repo_gpgcheck=0
+        gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+        exclude=kubelet kubeadm kubectl
+        EOF
+
+    - name: Set SELinux
+      shell: |
+        sudo setenforce 0
+        sudo sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
+        yum repolist -y
+
+    - name: Install kubernetes
+      shell: |
+        sudo yum install -y kubelet-1.24.0 kubeadm-1.24.0 kubectl-1.24.0 --disableexcludes=kubernetes
+
+    - name: Enable crio and kubelet
+      shell: |
+        sudo systemctl daemon-reload
+        sudo systemctl enable crio --now
+        sudo systemctl enable kubelet --now
+
+    - name: Pull necessary images
+      shell: |
+        sudo kubeadm config images pull
+
+- name: Init control-plane
+  hosts: ccloud
+  gather_facts: no
+  remote_user: "{{username}}"
+  become: yes
+  tasks:
+    - name: Initialize cluster
+      shell: |
+        sudo kubeadm init --pod-network-cidr=192.168.0.0/16
+    
+    - name: Add kubectl alias
+      shell: |
+        mkdir -p /home/{{username}}/.kube
+        sudo cp -i /etc/kubernetes/admin.conf /home/{{username}}/.kube/config
+        sudo chown {{username}} /home/{{username}}/.kube/config
+
+- name: Apply Calico
+  hosts: ccloud
+  gather_facts: no
+  remote_user: "{{username}}"
+  tasks:
+    - name: Apply operator
+      shell: |
+        kubectl create -f https://projectcalico.docs.tigera.io/manifests/tigera-operator.yaml
+    - name: Apply custom resources
+      shell: |
+        kubectl create -f https://projectcalico.docs.tigera.io/manifests/custom-resources.yaml
+
+- name: Untaint master
+  hosts: ccloud
+  gather_facts: no
+  remote_user: "{{username}}"
+  tasks:
+    - name: Untaint master nodes
+      shell: |
+        kubectl taint nodes --all node-role.kubernetes.io/control-plane- node-role.kubernetes.io/master-

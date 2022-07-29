@@ -1,0 +1,100 @@
+- name: Setup new user
+  hosts: ccloud
+  remote_user: cc
+  become: yes
+
+  tasks:
+    - name: Install basic packages
+      package:
+        name:
+          - passwd
+        state: present
+
+    - name: Create user
+      shell: |
+        useradd {{username}}
+        passwd -f -u {{username}}
+        passwd -d {{username}}
+
+    - name: Enable passwordless sudo
+      lineinfile:
+        dest: /etc/sudoers.d/90-cloud-init-users
+        state: present
+        regexp: '^{{username}}'
+        line: '{{username}} ALL=(ALL) NOPASSWD: ALL'
+        validate: 'visudo -cf %s'
+
+    - name: Copy ssh key
+      copy:
+        src: /home/cc/.ssh
+        dest: "/home/{{username}}/"
+        remote_src: yes
+
+    - name: Change .ssh permission
+      file:
+        path: "/home/{{username}}/.ssh"
+        mode: 0700
+        owner: "{{username}}"
+
+    - name: Change .ssh/authorized_keys permission
+      file:
+        path: "/home/{{username}}/.ssh/authorized_keys"
+        mode: 0644
+        owner: "{{username}}"
+
+    - name: Create mnt extra
+      file:
+        path: /mnt/extra
+        state: directory
+        owner: "{{username}}"
+
+- name: Setup zsh
+  hosts: ccloud
+  remote_user: "{{username}}"
+  become: yes
+
+  tasks:
+    - name: Update package manager
+      command: /bin/true
+      notify: "Update package manager"
+      
+    - meta: flush_handlers
+
+    - name: Install basic packages
+      package:
+        name:
+          - wget
+          - git
+          - vim
+          - nano
+          - zsh
+        state: latest
+
+    - name: Change shell user
+      command:
+        cmd: "sudo chsh -s /bin/zsh {{username}}"
+    
+  handlers:
+    - name: Update apt
+      apt:
+        update_cache: yes
+      when: ansible_distribution == 'Debian' or ansible_distribution == 'Ubuntu'
+      listen: "Update package manager"
+    
+    - name: Update yum
+      yum:
+        update_cache: yes
+      when: ansible_distribution == 'CentOS' or ansible_distribution == 'Red Hat Enterprise Linux'
+      listen: "Update package manager"
+
+- name: Setup Oh My Zsh
+  hosts: ccloud
+  gather_facts: no
+  remote_user: "{{username}}"
+  tasks:
+    - name: Setup
+      shell: |
+        sh -c "$(wget https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh -O -)"
+        /bin/cp /home/{{username}}/.oh-my-zsh/templates/zshrc.zsh-template /home/{{username}}/.zshrc
+        sudo sed -i 's|home/{{username}}:/bin/bash|home/{{username}}:/bin/zsh|g' /etc/passwd
+        sudo sed -i 's|ZSH_THEME="robbyrussell"|ZSH_THEME="risto"|g' /home/{{username}}/.zshrc
