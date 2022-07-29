@@ -29,7 +29,7 @@ ansible --version
   chmod +x command.sh
   ./command.sh
   ```
-- Wait until it finishes
+- Wait until it finishes (it can take more than 20 minutes)
 
 ## Manual setup
 
