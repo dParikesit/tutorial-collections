@@ -1,4 +1,4 @@
-# TOC:
+# ToC:
 
 - Automated setup using ansible
 - Manual setup
